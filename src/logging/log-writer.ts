@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { eventBus } from "./event-bus.js";
-import type { StreamEvent } from "./event-types.js";
+import { eventBus } from "../core/event-bus.js";
+import type { StreamEvent } from "../core/event-types.js";
 
 const jarvisHome = process.env.JARVIS_HOME || process.cwd();
 const logsRoot = join(jarvisHome, "data", "logs");
