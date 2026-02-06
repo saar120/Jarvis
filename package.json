@@ -1,0 +1,20 @@
+{
+  "name": "jarvis",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Personal AI assistant — Telegram bot powered by Claude CLI",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "chat": "node dist/chat.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "telegraf": "^4.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}
