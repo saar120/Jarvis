@@ -7,14 +7,17 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
-    "chat": "node dist/chat.js"
+    "chat": "node dist/chat.js",
+    "logs": "node dist/log-viewer.js"
   },
   "dependencies": {
     "dotenv": "^16.4.0",
-    "telegraf": "^4.16.0"
+    "telegraf": "^4.16.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.4.0"
   }
 }

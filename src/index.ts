@@ -3,6 +3,8 @@ import { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import { runMainAgent, isCliError } from "./cli-runner.js";
 import { getSessionId, setSessionId, resetSession } from "./session-store.js";
+import { startLogWriter } from "./log-writer.js";
+import { startLogServer } from "./log-server.js";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -126,6 +128,12 @@ function chunkMessage(text: string): string[] {
   }
 
   return chunks;
+}
+
+// --- Logging ---
+startLogWriter();
+if (process.env.JARVIS_LOG_ENABLED !== "false") {
+  startLogServer();
 }
 
 // --- Startup ---

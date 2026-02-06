@@ -1,6 +1,14 @@
 import { createInterface } from "node:readline";
 import { runMainAgent, isCliError } from "./cli-runner.js";
 import { getSessionId, setSessionId, resetSession } from "./session-store.js";
+import { startLogWriter } from "./log-writer.js";
+import { startLogServer } from "./log-server.js";
+
+// --- Logging ---
+startLogWriter();
+if (process.env.JARVIS_LOG_ENABLED !== "false") {
+  startLogServer();
+}
 
 const CHAT_ID = "cli";
 
