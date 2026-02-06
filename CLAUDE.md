@@ -14,7 +14,7 @@ npm run dev            # tsc --watch
 ## Architecture
 
 ```
-Telegram / CLI → src/cli-runner.ts (execFile) → claude -p → response
+Telegram / CLI → src/core/cli-runner.ts (spawn) → claude -p → response
 ```
 
 - **No API key needed** — uses Claude Code CLI (`claude -p`) with Pro/Max subscription
@@ -27,10 +27,20 @@ Telegram / CLI → src/cli-runner.ts (execFile) → claude -p → response
 ```
 jarvis/
 ├── src/
-│   ├── index.ts              # Telegram relay (Telegraf, auth, chunking, typing indicator)
-│   ├── cli-runner.ts         # claude -p wrapper (execFile, no shell injection)
-│   ├── session-store.ts      # chatId → sessionId map (data/sessions.json)
-│   └── chat.ts               # CLI REPL for local testing
+│   ├── index.ts              # Thin entry point → re-exports entrypoints/telegram
+│   ├── core/
+│   │   ├── cli-runner.ts     # claude -p wrapper (spawn, no shell injection)
+│   │   ├── event-bus.ts      # Central pub/sub for stream events
+│   │   └── event-types.ts    # TypeScript types for stream-json events
+│   ├── logging/
+│   │   ├── log-writer.ts     # Persists events to JSONL files
+│   │   └── log-server.ts     # HTTP + WebSocket log viewer
+│   ├── store/
+│   │   └── session-store.ts  # chatId → sessionId map (data/sessions.json)
+│   └── entrypoints/
+│       ├── telegram.ts       # Telegram relay (Telegraf, auth, chunking, typing)
+│       ├── chat.ts           # CLI REPL for local testing
+│       └── log-viewer.ts     # Standalone log viewer entry point
 ├── agents/main/
 │   ├── system-prompt.md      # Jarvis personality & instructions
 │   └── memory.md             # Persistent memory (grows over time)
@@ -58,7 +68,7 @@ jarvis/
 
 ## Key Design Decisions
 
-### CLI Runner (`src/cli-runner.ts`)
+### CLI Runner (`src/core/cli-runner.ts`)
 
 Single function: `runMainAgent(message, sessionId?) → Promise<CliResult | CliError>`
 
@@ -68,13 +78,13 @@ Single function: `runMainAgent(message, sessionId?) → Promise<CliResult | CliE
 - Returns discriminated union with `isCliError()` type guard
 - Timeout: 120s default, configurable via `JARVIS_TIMEOUT_MS`
 
-### Session Store (`src/session-store.ts`)
+### Session Store (`src/store/session-store.ts`)
 
 - Maps Telegram chatId (or `"cli"`) → Claude session UUID
 - Sync file I/O to `data/sessions.json` (fine for single-user bot)
 - No UUID generation — captures `session_id` from CLI JSON output
 
-### Telegram Relay (`src/index.ts`)
+### Telegram Relay (`src/entrypoints/telegram.ts`)
 
 - Auth via `TELEGRAM_ALLOWED_USERS` (comma-separated IDs, silent ignore if unauthorized)
 - Typing indicator refreshed every 4s

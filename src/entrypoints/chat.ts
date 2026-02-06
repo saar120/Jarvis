@@ -1,8 +1,8 @@
 import { createInterface } from "node:readline";
-import { runMainAgent, isCliError } from "./cli-runner.js";
-import { getSessionId, setSessionId, resetSession } from "./session-store.js";
-import { startLogWriter } from "./log-writer.js";
-import { startLogServer } from "./log-server.js";
+import { runMainAgent, isCliError } from "../core/cli-runner.js";
+import { getSessionId, setSessionId, resetSession } from "../store/session-store.js";
+import { startLogWriter } from "../logging/log-writer.js";
+import { startLogServer } from "../logging/log-server.js";
 
 // --- Logging ---
 startLogWriter();

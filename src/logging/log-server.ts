@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
-import { eventBus } from "./event-bus.js";
+import { eventBus } from "../core/event-bus.js";
 
 const PORT = Number(process.env.JARVIS_LOG_PORT) || 7777;
 const jarvisHome = process.env.JARVIS_HOME || process.cwd();
