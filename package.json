@@ -12,7 +12,7 @@
     "dev:gui": "npm --prefix gui run dev",
     "start": "node dist/index.js",
     "chat": "node dist/entrypoints/chat.js",
-    "logs": "node dist/entrypoints/log-viewer.js"
+    "dashboard": "node dist/entrypoints/dashboard.js"
   },
   "dependencies": {
     "dotenv": "^16.4.0",

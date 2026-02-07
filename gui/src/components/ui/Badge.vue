@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 const props = withDefaults(
   defineProps<{
-    variant?: "default" | "agent-main" | "agent-sub";
+    variant?: "default" | "agent-main" | "agent-sub" | "success" | "danger";
   }>(),
   { variant: "default" }
 );
@@ -16,6 +16,8 @@ const classes = computed(() =>
       "bg-primary/15 text-primary": props.variant === "default",
       "bg-blue-400/15 text-blue-400": props.variant === "agent-main",
       "bg-orange-400/15 text-orange-400": props.variant === "agent-sub",
+      "bg-green-400/15 text-green-400": props.variant === "success",
+      "bg-red-400/15 text-red-400": props.variant === "danger",
     }
   )
 );

@@ -4,6 +4,11 @@ defineProps<{
   cost: number;
   turns: number;
   eventCount: number;
+  activeView: "logs" | "agents";
+}>();
+
+defineEmits<{
+  "update:activeView": [value: "logs" | "agents"];
 }>();
 </script>
 
@@ -16,9 +21,27 @@ defineProps<{
         class="h-2 w-2 rounded-full transition-colors duration-300"
         :class="connected ? 'bg-green-400' : 'bg-red-400'"
       />
-      <h1 class="text-base font-semibold text-foreground">Jarvis Log Viewer</h1>
+      <h1 class="text-base font-semibold text-foreground">Jarvis</h1>
+      <nav class="ml-3 flex gap-1">
+        <button
+          v-for="tab in ([
+            { id: 'logs' as const, label: 'Logs' },
+            { id: 'agents' as const, label: 'Agents' },
+          ])"
+          :key="tab.id"
+          class="rounded-md px-3 py-1 text-[13px] font-medium transition-colors"
+          :class="
+            activeView === tab.id
+              ? 'bg-card text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="$emit('update:activeView', tab.id)"
+        >
+          {{ tab.label }}
+        </button>
+      </nav>
     </div>
-    <div class="flex gap-4 font-mono text-[13px] text-muted-foreground">
+    <div v-if="activeView === 'logs'" class="flex gap-4 font-mono text-[13px] text-muted-foreground">
       <span class="flex items-center gap-1">
         <span class="text-muted-foreground/60">Cost:</span>
         ${{ cost.toFixed(4) }}
