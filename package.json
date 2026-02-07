@@ -4,9 +4,13 @@
   "type": "module",
   "description": "Personal AI assistant — Telegram bot powered by Claude CLI",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "postinstall": "npm --prefix gui install",
+    "build": "tsc && npm run build:gui",
+    "build:server": "tsc",
+    "build:gui": "npm --prefix gui run build",
     "dev": "tsc --watch",
+    "dev:gui": "npm --prefix gui run dev",
+    "start": "node dist/index.js",
     "chat": "node dist/entrypoints/chat.js",
     "logs": "node dist/entrypoints/log-viewer.js"
   },

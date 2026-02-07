@@ -1,30 +1,59 @@
 import { createServer } from "node:http";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { join, resolve, extname } from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
 import { eventBus } from "../core/event-bus.js";
 
 const PORT = Number(process.env.JARVIS_LOG_PORT) || 7777;
 const jarvisHome = process.env.JARVIS_HOME || process.cwd();
 const logsRoot = join(jarvisHome, "data", "logs");
-const guiPath = join(jarvisHome, "gui", "index.html");
+const guiDist = join(jarvisHome, "gui", "dist");
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".json": "application/json",
+};
 
 import type { Server } from "node:http";
+
+function serveStatic(res: import("node:http").ServerResponse, filePath: string): boolean {
+  const resolved = resolve(filePath);
+  if (!resolved.startsWith(resolve(guiDist))) {
+    res.writeHead(403, { "Content-Type": "text/plain" });
+    res.end("Forbidden");
+    return true;
+  }
+  if (!existsSync(resolved) || !statSync(resolved).isFile()) return false;
+  const ext = extname(resolved);
+  const mime = MIME_TYPES[ext] || "application/octet-stream";
+  res.writeHead(200, { "Content-Type": mime });
+  res.end(readFileSync(resolved));
+  return true;
+}
 
 export function startLogServer(): Server {
   const server = createServer((req, res) => {
     const url = req.url || "/";
 
-    // Serve GUI
-    if (url === "/" || url === "/index.html") {
-      try {
-        const html = readFileSync(guiPath, "utf-8");
+    // Serve Vue SPA — try exact file first, fall back to index.html
+    if (!url.startsWith("/api/")) {
+      const cleanUrl = url.split("?")[0];
+      // Try serving exact file from dist
+      if (cleanUrl !== "/" && serveStatic(res, join(guiDist, cleanUrl))) return;
+      // Serve index.html for SPA routing
+      const indexPath = join(guiDist, "index.html");
+      if (existsSync(indexPath)) {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(html);
-      } catch {
-        res.writeHead(500, { "Content-Type": "text/plain" });
-        res.end("GUI not found. Ensure gui/index.html exists.");
+        res.end(readFileSync(indexPath, "utf-8"));
+        return;
       }
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("GUI not found. Run 'npm run build:gui' first.");
       return;
     }
 
