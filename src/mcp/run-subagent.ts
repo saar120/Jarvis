@@ -10,6 +10,9 @@ import type { ChildProcess } from "node:child_process";
 const jarvisHome = process.env.JARVIS_HOME || process.cwd();
 const logPort = Number(process.env.JARVIS_LOG_PORT) || 7777;
 const logsRoot = join(jarvisHome, "data", "logs");
+// Inherited from cli-runner.ts → claude CLI → MCP server spawn chain.
+// When set, subagent events are logged under the parent conversation's file.
+const parentSessionId = process.env.JARVIS_PARENT_SESSION_ID || "";
 
 export const activeChildren = new Set<ChildProcess>();
 
@@ -25,6 +28,12 @@ export interface SubagentError {
   ok: false;
   type: "timeout" | "cli_error" | "parse_error";
   message: string;
+}
+
+/** Remap session_id to the parent conversation when available. */
+function toLogEvent(event: Record<string, unknown>): Record<string, unknown> {
+  if (!parentSessionId) return event;
+  return { ...event, session_id: parentSessionId, _subagentSessionId: event.session_id };
 }
 
 function postEvent(event: Record<string, unknown>): void {
@@ -163,7 +172,7 @@ export function runSubagent(
             _agentName: config.name,
           };
           events.push(enriched);
-          postEvent(enriched);
+          postEvent(toLogEvent(enriched));
         } catch { /* non-JSON line */ }
       }
     });
@@ -187,7 +196,7 @@ export function runSubagent(
             _agentName: config.name,
           };
           events.push(enriched);
-          postEvent(enriched);
+          postEvent(toLogEvent(enriched));
         } catch { /* ignore */ }
       }
 
