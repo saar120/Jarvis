@@ -94,6 +94,7 @@ export function runSubagent(
       "-p",
       "--verbose",
       "--output-format", "stream-json",
+      "--setting-sources", "project",
       "--system-prompt", config.systemPrompt,
     ];
 
@@ -101,12 +102,13 @@ export function runSubagent(
       args.push("--append-system-prompt", memory);
     }
 
-    // Agent-specific permissions
+    // Agent-specific permissions — agent config is source of truth.
+    // Empty allow = no tools (agents are isolated by default).
+    // --tools is an explicit whitelist: unlisted tools are implicitly denied.
     if (config.permissions.allow.length > 0) {
-      args.push("--allowedTools", config.permissions.allow.join(","));
-    }
-    if (config.permissions.deny.length > 0) {
-      args.push("--disallowedTools", config.permissions.deny.join(","));
+      args.push("--tools", config.permissions.allow.join(","));
+    } else {
+      args.push("--tools", "");
     }
 
     // MCP servers for this agent
@@ -124,7 +126,9 @@ export function runSubagent(
     const fullPrompt = context
       ? `Context:\n${context}\n\nTask:\n${prompt}`
       : prompt;
-    args.push(fullPrompt);
+    // "--" stops flag parsing so variadic flags (--tools, --allowedTools)
+    // don't consume the prompt as additional tool names.
+    args.push("--", fullPrompt);
 
     const child = spawn("claude", args, { cwd: jarvisHome });
     activeChildren.add(child);

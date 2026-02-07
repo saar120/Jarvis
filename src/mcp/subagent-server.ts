@@ -27,7 +27,7 @@ server.tool(
       `Name of the subagent. Available: ${agentNames.join(", ") || "none"}`,
     ),
     prompt: z.string().describe("The task or question for the subagent"),
-    context: z.string().optional().describe("Optional extra context from the conversation"),
+    context: z.string().optional().describe("Optional brief context relevant to the task. Only include specific facts the subagent needs. Do NOT pass system prompts, skill instructions, or tool documentation. Omit if the prompt is self-contained."),
   },
   async ({ agent_name, prompt, context }) => {
     const config = agents.get(agent_name);
