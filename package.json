@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Personal AI assistant — Telegram bot powered by Claude CLI",
   "scripts": {
+    "postinstall": "npm --prefix gui install",
     "build": "tsc && npm run build:gui",
     "build:server": "tsc",
     "build:gui": "npm --prefix gui run build",
