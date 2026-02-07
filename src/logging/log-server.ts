@@ -21,6 +21,25 @@ const MIME_TYPES: Record<string, string> = {
 
 import type { Server } from "node:http";
 
+function parseFrontmatter(raw: string): { meta: Record<string, unknown>; body: string } {
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) return { meta: {}, body: raw.trim() };
+
+  const meta: Record<string, unknown> = {};
+  for (const line of match[1].split("\n")) {
+    const kv = line.match(/^([\w][\w-]*)\s*:\s*(.*)$/);
+    if (!kv) continue;
+    const [, key, rawVal] = kv;
+    let val: unknown = rawVal.trim();
+    if (typeof val === "string" && /^".*"$/.test(val)) val = val.slice(1, -1);
+    if (typeof val === "string" && /^\[.*\]$/.test(val)) {
+      val = val.slice(1, -1).split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    meta[key] = val;
+  }
+  return { meta, body: match[2].trim() };
+}
+
 function serveStatic(res: import("node:http").ServerResponse, filePath: string): boolean {
   const resolved = resolve(filePath);
   if (!resolved.startsWith(resolve(guiDist))) {
@@ -120,6 +139,75 @@ export function startLogServer(): Server {
       return;
     }
 
+    // Get agents config
+    if (url === "/api/agents") {
+      const result: {
+        mainAgent: { systemPrompt: string; memory: string } | null;
+        subAgents: Array<{ slug: string; fileName: string; name: string; description: string | null; tools: string[] | null; prompt: string }>;
+        skills: Array<{ slug: string; dirName: string; name: string; description: string | null; allowedTools: string | null; prompt: string }>;
+        settings: unknown;
+      } = { mainAgent: null, subAgents: [], skills: [], settings: null };
+
+      // Main agent
+      const sysPromptPath = join(jarvisHome, "agents", "main", "system-prompt.md");
+      const memoryPath = join(jarvisHome, "agents", "main", "memory.md");
+      if (existsSync(sysPromptPath) || existsSync(memoryPath)) {
+        result.mainAgent = {
+          systemPrompt: existsSync(sysPromptPath) ? readFileSync(sysPromptPath, "utf-8") : "",
+          memory: existsSync(memoryPath) ? readFileSync(memoryPath, "utf-8") : "",
+        };
+      }
+
+      // Sub-agents from .claude/agents/*.md
+      const agentsDir = join(jarvisHome, ".claude", "agents");
+      if (existsSync(agentsDir)) {
+        for (const file of readdirSync(agentsDir).filter((f) => f.endsWith(".md")).sort()) {
+          const raw = readFileSync(join(agentsDir, file), "utf-8");
+          const { meta, body } = parseFrontmatter(raw);
+          result.subAgents.push({
+            slug: file.replace(/\.md$/, ""),
+            fileName: file,
+            name: (meta.name as string) || file.replace(/\.md$/, ""),
+            description: (meta.description as string) || null,
+            tools: (meta.tools as string[]) || null,
+            prompt: body,
+          });
+        }
+      }
+
+      // Skills from .claude/skills/*/SKILL.md
+      const skillsDir = join(jarvisHome, ".claude", "skills");
+      if (existsSync(skillsDir)) {
+        for (const dir of readdirSync(skillsDir).sort()) {
+          const skillPath = join(skillsDir, dir, "SKILL.md");
+          if (!existsSync(skillPath)) continue;
+          const raw = readFileSync(skillPath, "utf-8");
+          const { meta, body } = parseFrontmatter(raw);
+          result.skills.push({
+            slug: dir,
+            dirName: dir,
+            name: (meta.name as string) || dir,
+            description: (meta.description as string) || null,
+            allowedTools: (meta["allowed-tools"] as string) || null,
+            prompt: body,
+          });
+        }
+      }
+
+      // Settings from .claude/settings.json
+      const settingsPath = join(jarvisHome, ".claude", "settings.json");
+      if (existsSync(settingsPath)) {
+        try { result.settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch { /* ignore */ }
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");
   });
@@ -141,7 +229,7 @@ export function startLogServer(): Server {
   });
 
   server.listen(PORT, () => {
-    console.log(`Jarvis log viewer: http://localhost:${PORT}`);
+    console.log(`Jarvis dashboard: http://localhost:${PORT}`);
   });
 
   return server;
