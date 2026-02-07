@@ -208,6 +208,40 @@ export function startLogServer(): Server {
       return;
     }
 
+    // Ingest events from external processes (MCP subagent server)
+    if (req.method === "POST" && url === "/api/events") {
+      const MAX_BODY = 1024 * 1024; // 1 MB
+      let body = "";
+      let aborted = false;
+      req.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+        if (body.length > MAX_BODY) {
+          aborted = true;
+          res.writeHead(413, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Payload too large" }));
+          req.destroy();
+        }
+      });
+      req.on("end", () => {
+        if (aborted) return;
+        try {
+          const event = JSON.parse(body);
+          if (!event || typeof event !== "object" || typeof event.type !== "string") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Event must have a string 'type' field" }));
+            return;
+          }
+          eventBus.emitEvent(event);
+          res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Invalid JSON" }));
+        }
+      });
+      return;
+    }
+
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");
   });
