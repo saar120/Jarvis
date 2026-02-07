@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, resolve, extname } from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
 import { eventBus } from "../core/event-bus.js";
+import { discoverAgents } from "../mcp/agent-registry.js";
 
 const PORT = Number(process.env.JARVIS_LOG_PORT) || 7777;
 const jarvisHome = process.env.JARVIS_HOME || process.cwd();
@@ -144,9 +145,16 @@ export function startLogServer(): Server {
       const result: {
         mainAgent: { systemPrompt: string; memory: string } | null;
         subAgents: Array<{ slug: string; fileName: string; name: string; description: string | null; tools: string[] | null; prompt: string }>;
+        mcpAgents: Array<{
+          slug: string; name: string; description: string;
+          session: boolean; allowed_callers: string[]; timeout_ms: number;
+          permissions: { allow: string[]; deny: string[] };
+          mcp_servers: Array<{ name: string; command: string; args?: string[] }>;
+          prompt: string;
+        }>;
         skills: Array<{ slug: string; dirName: string; name: string; description: string | null; allowedTools: string | null; prompt: string }>;
         settings: unknown;
-      } = { mainAgent: null, subAgents: [], skills: [], settings: null };
+      } = { mainAgent: null, subAgents: [], mcpAgents: [], skills: [], settings: null };
 
       // Main agent
       const sysPromptPath = join(jarvisHome, "agents", "main", "system-prompt.md");
@@ -174,6 +182,24 @@ export function startLogServer(): Server {
           });
         }
       }
+
+      // MCP agents from agents/{name}/agent.md
+      try {
+        const mcpAgentsMap = discoverAgents();
+        for (const [, agent] of mcpAgentsMap) {
+          result.mcpAgents.push({
+            slug: agent.name,
+            name: agent.name,
+            description: agent.description,
+            session: agent.session,
+            allowed_callers: agent.allowed_callers,
+            timeout_ms: agent.timeout_ms,
+            permissions: agent.permissions,
+            mcp_servers: agent.mcp_servers.map(({ name, command, args }) => ({ name, command, args })),
+            prompt: agent.systemPrompt,
+          });
+        }
+      } catch { /* agent discovery may fail if yaml not available */ }
 
       // Skills from .claude/skills/*/SKILL.md
       const skillsDir = join(jarvisHome, ".claude", "skills");
