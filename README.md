@@ -71,6 +71,146 @@ User (Telegram/CLI)
     → Response chunked (4096 char limit) and sent back
 ```
 
+## Architecture & Agentic Pipeline
+
+### Overview
+
+Jarvis wraps the Claude Code CLI (`claude -p`) as a stateless subprocess. Each user message spawns a **single short-lived `claude` process**, and conversation continuity is achieved by resuming Claude sessions via `--resume <sessionId>`.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  User (Telegram / CLI)                                           │
+└──────────┬───────────────────────────────────────────────────────┘
+           │ text message
+           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  Entrypoint (telegram.ts / chat.ts)                              │
+│  ┌─ Lookup sessionId from data/sessions.json (chatId → UUID)    │
+│  └─ Call runMainAgent(message, sessionId?)                       │
+└──────────┬───────────────────────────────────────────────────────┘
+           │ spawn
+           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  claude -p  (one process per message)                            │
+│                                                                  │
+│  Flags:                                                          │
+│    --system-prompt <agents/main/system-prompt.md>                │
+│    --append-system-prompt <agents/main/memory.md>                │
+│    --resume <sessionId>          (omitted on first message)      │
+│    --output-format stream-json                                   │
+│    --setting-sources project                                     │
+│                                                                  │
+│  Claude processes the message, may use tools (Read, Write,       │
+│  Bash, Task, MCP tools), then emits a result event and exits.    │
+└──────────┬───────────────────────────────────────────────────────┘
+           │ stream-json events
+           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  cli-runner.ts                                                   │
+│  ┌─ Parse stream-json events, emit to event bus                  │
+│  ├─ Extract result text + session_id from result event           │
+│  └─ Return CliResult { result, sessionId, durationMs, costUsd }  │
+└──────────┬───────────────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  Entrypoint                                                      │
+│  ┌─ Store sessionId → data/sessions.json (for next --resume)     │
+│  └─ Chunk response (4096 char limit) and send to user            │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Sessions & Conversation Memory
+
+There are **two layers** of memory:
+
+| Layer | What it holds | Where it lives | Survives `/reset`? |
+|-------|---------------|----------------|---------------------|
+| **Session history** | Full conversation turns (user messages, Claude responses, tool calls) | Anthropic's servers, accessed via `--resume <sessionId>` | No |
+| **Persistent memory** | Facts, preferences, learned knowledge | `agents/main/memory.md` (local file) | Yes |
+
+**Session lifecycle:**
+
+1. **First message** — no session ID exists, so `claude -p` runs without `--resume`. Claude creates a new session and returns a `session_id` in the result event. Jarvis stores the mapping `chatId → sessionId` in `data/sessions.json`.
+2. **Subsequent messages** — Jarvis looks up the stored `sessionId` and passes `--resume <sessionId>`. Claude loads the full conversation history from that session.
+3. **`/reset`** — Jarvis deletes the `chatId` entry from `data/sessions.json`. The next message starts a new session. The old session still exists on Anthropic's side but becomes unreachable.
+
+Both `system-prompt.md` and `memory.md` are **re-read from disk on every call**, so memory updates take effect immediately without restarting.
+
+### MCP Subagent Pipeline
+
+When the main agent needs to delegate work, it calls the `run_subagent` MCP tool. This spawns an **additional `claude -p` process** with the subagent's own system prompt, permissions, and optional memory.
+
+```
+┌─────────────────────────────────────────────┐
+│  Main claude -p process                      │
+│  (handling user message)                     │
+│                                              │
+│  Decides to call: run_subagent(              │
+│    agent_name: "echo",                       │
+│    prompt: "...",                             │
+│    context?: "..."                            │
+│  )                                           │
+└──────────┬──────────────────────────────────┘
+           │ MCP tool call (stdio)
+           ▼
+┌─────────────────────────────────────────────┐
+│  subagent-server.ts (MCP server)             │
+│  ┌─ Validate agent name & caller permission  │
+│  ├─ Load config from agents/{name}/agent.md  │
+│  ├─ Resolve session (if agent.session: true) │
+│  └─ Call runSubagent(config, prompt, ...)     │
+└──────────┬──────────────────────────────────┘
+           │ spawn
+           ▼
+┌─────────────────────────────────────────────┐
+│  Subagent claude -p process                  │
+│                                              │
+│  Flags:                                      │
+│    --system-prompt <agent.md body>           │
+│    --append-system-prompt <memory.md>        │
+│    --tools <agent permissions>               │
+│    --resume <sessionId>  (if session: true)  │
+│                                              │
+│  Runs to completion → result returned        │
+└──────────┬──────────────────────────────────┘
+           │ result
+           ▼
+┌─────────────────────────────────────────────┐
+│  subagent-server.ts                          │
+│  ┌─ Store session if persistent              │
+│  └─ Return result to main claude process     │
+└─────────────────────────────────────────────┘
+```
+
+**Key differences from the main agent:**
+
+| Aspect | Main Agent | MCP Subagent |
+|--------|------------|--------------|
+| Invocations per user message | Exactly 1 | 0 to N (on demand) |
+| Session key | `chatId` (per Telegram user) | `agentName` (global, shared across users) |
+| Session file | `data/sessions.json` | `data/subagent-sessions.json` |
+| Session mode | Always persistent | Configurable (`session: true/false` in agent.md) |
+| Permissions | Project settings (`.claude/settings.json`) | Per-agent (`permissions.allow` in agent.md) |
+| System prompt | `agents/main/system-prompt.md` | Markdown body of `agents/{name}/agent.md` |
+
+### Process Lifecycle Summary
+
+For a single user message that triggers one subagent call:
+
+```
+User sends "do X"
+  → 1x claude -p spawned (main agent)
+       → main agent thinks, decides to delegate
+       → 1x claude -p spawned (subagent via MCP)
+       → subagent completes, result returned to main
+       → main agent incorporates result, produces final answer
+  → response sent to user
+  → both processes have exited
+```
+
+No long-running processes. Every `claude -p` invocation is ephemeral — session continuity comes entirely from `--resume`.
+
 ## Project Structure
 
 ```
