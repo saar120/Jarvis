@@ -109,7 +109,7 @@ Jarvis wraps the Claude Code CLI (`claude -p`) as a stateless subprocess. Each u
 │  cli-runner.ts                                                   │
 │  ┌─ Parse stream-json events, emit to event bus                  │
 │  ├─ Extract result text + session_id from result event           │
-│  └─ Return CliResult { result, sessionId, durationMs, costUsd }  │
+│  └─ Return RunResult { result, sessionId, durationMs, costUsd }  │
 └──────────┬───────────────────────────────────────────────────────┘
            │
            ▼

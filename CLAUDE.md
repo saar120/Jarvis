@@ -81,12 +81,12 @@ jarvis/
 
 ### CLI Runner (`src/core/cli-runner.ts`)
 
-Single function: `runMainAgent(message, sessionId?) → Promise<CliResult | CliError>`
+Single function: `runMainAgent(message, sessionId?) → Promise<RunResult | RunError>`
 
 - Uses `spawn` (not `exec`) — args as array, prevents shell injection from Telegram messages
 - Reads `system-prompt.md` and `memory.md` on every call (memory changes between invocations)
 - Passes content via `--system-prompt` and `--append-system-prompt` (inline strings, not file flags)
-- Returns discriminated union with `isCliError()` type guard
+- Returns discriminated union with `isRunError()` type guard
 - Timeout: 120s default, configurable via `JARVIS_TIMEOUT_MS`
 
 ### Session Store (`src/store/session-store.ts`)
