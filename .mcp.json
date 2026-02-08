@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "jarvis-subagents": {
+      "command": "node",
+      "args": ["dist/mcp/subagent-server.js"]
+    }
+  }
+}

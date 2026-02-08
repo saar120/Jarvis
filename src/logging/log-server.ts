@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, resolve, extname } from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
 import { eventBus } from "../core/event-bus.js";
+import { discoverAgents } from "../mcp/agent-registry.js";
 
 const PORT = Number(process.env.JARVIS_LOG_PORT) || 7777;
 const jarvisHome = process.env.JARVIS_HOME || process.cwd();
@@ -144,9 +145,16 @@ export function startLogServer(): Server {
       const result: {
         mainAgent: { systemPrompt: string; memory: string } | null;
         subAgents: Array<{ slug: string; fileName: string; name: string; description: string | null; tools: string[] | null; prompt: string }>;
+        mcpAgents: Array<{
+          slug: string; name: string; description: string;
+          session: boolean; allowed_callers: string[]; timeout_ms: number;
+          permissions: { allow: string[]; deny: string[] };
+          mcp_servers: Array<{ name: string; command: string; args?: string[] }>;
+          prompt: string;
+        }>;
         skills: Array<{ slug: string; dirName: string; name: string; description: string | null; allowedTools: string | null; prompt: string }>;
         settings: unknown;
-      } = { mainAgent: null, subAgents: [], skills: [], settings: null };
+      } = { mainAgent: null, subAgents: [], mcpAgents: [], skills: [], settings: null };
 
       // Main agent
       const sysPromptPath = join(jarvisHome, "agents", "main", "system-prompt.md");
@@ -174,6 +182,24 @@ export function startLogServer(): Server {
           });
         }
       }
+
+      // MCP agents from agents/{name}/agent.md
+      try {
+        const mcpAgentsMap = discoverAgents();
+        for (const [, agent] of mcpAgentsMap) {
+          result.mcpAgents.push({
+            slug: agent.name,
+            name: agent.name,
+            description: agent.description,
+            session: agent.session,
+            allowed_callers: agent.allowed_callers,
+            timeout_ms: agent.timeout_ms,
+            permissions: agent.permissions,
+            mcp_servers: agent.mcp_servers.map(({ name, command, args }) => ({ name, command, args })),
+            prompt: agent.systemPrompt,
+          });
+        }
+      } catch { /* agent discovery may fail if yaml not available */ }
 
       // Skills from .claude/skills/*/SKILL.md
       const skillsDir = join(jarvisHome, ".claude", "skills");
@@ -205,6 +231,40 @@ export function startLogServer(): Server {
         "Access-Control-Allow-Origin": "*",
       });
       res.end(JSON.stringify(result));
+      return;
+    }
+
+    // Ingest events from external processes (MCP subagent server)
+    if (req.method === "POST" && url === "/api/events") {
+      const MAX_BODY = 1024 * 1024; // 1 MB
+      let body = "";
+      let aborted = false;
+      req.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+        if (body.length > MAX_BODY) {
+          aborted = true;
+          res.writeHead(413, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Payload too large" }));
+          req.destroy();
+        }
+      });
+      req.on("end", () => {
+        if (aborted) return;
+        try {
+          const event = JSON.parse(body);
+          if (!event || typeof event !== "object" || typeof event.type !== "string") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Event must have a string 'type' field" }));
+            return;
+          }
+          eventBus.emitEvent(event);
+          res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Invalid JSON" }));
+        }
+      });
       return;
     }
 

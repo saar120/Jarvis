@@ -111,7 +111,10 @@ export function runMainAgent(
 
     args.push(message);
 
-    const child = spawn("claude", args, { cwd: jarvisHome });
+    const child = spawn("claude", args, {
+      cwd: jarvisHome,
+      env: { ...process.env, JARVIS_PARENT_SESSION_ID: sessionId || "" },
+    });
 
     // Close stdin so claude -p doesn't wait for input
     child.stdin?.end();

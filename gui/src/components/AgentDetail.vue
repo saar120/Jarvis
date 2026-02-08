@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import type { AgentsConfig, AgentNavItem } from "@/types/agents";
 import Badge from "./ui/Badge.vue";
-import { Bot, Users, Wrench, Shield } from "lucide-vue-next";
+import { Bot, Users, Wrench, Shield, Cpu } from "lucide-vue-next";
 
 const props = defineProps<{
   config: AgentsConfig | null;
@@ -26,6 +26,10 @@ const detail = computed(() => {
   if (item.kind === "subagent") {
     const agent = cfg.subAgents.find((a) => a.slug === item.slug);
     if (agent) return { kind: "subagent" as const, title: agent.name, icon: Users, data: agent };
+  }
+  if (item.kind === "mcpagent") {
+    const agent = cfg.mcpAgents?.find((a) => a.slug === item.slug);
+    if (agent) return { kind: "mcpagent" as const, title: agent.name, icon: Cpu, data: agent };
   }
   if (item.kind === "skill") {
     const skill = cfg.skills.find((s) => s.slug === item.slug);
@@ -112,6 +116,76 @@ const detail = computed(() => {
 
       <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         Prompt
+      </div>
+      <pre
+        class="max-h-[500px] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 font-mono text-xs text-muted-foreground"
+      >{{ detail.data.prompt }}</pre>
+    </template>
+
+    <!-- MCP Agent -->
+    <template v-else-if="detail.kind === 'mcpagent'">
+      <div class="mb-6 flex items-center gap-2">
+        <component :is="detail.icon" :size="20" class="text-primary" />
+        <h2 class="text-lg font-semibold text-foreground">{{ detail.title }}</h2>
+      </div>
+
+      <!-- Metadata card -->
+      <div class="mb-6 rounded-lg border border-border bg-card p-4">
+        <div class="mb-3">
+          <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Description
+          </div>
+          <p class="text-[13px] text-foreground">{{ detail.data.description }}</p>
+        </div>
+        <div class="mb-3 grid grid-cols-3 gap-4">
+          <div>
+            <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Session
+            </div>
+            <span class="text-[13px] text-foreground">{{ detail.data.session ? 'Persistent' : 'Stateless' }}</span>
+          </div>
+          <div>
+            <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Timeout
+            </div>
+            <span class="text-[13px] text-foreground">{{ (detail.data.timeout_ms / 1000).toFixed(0) }}s</span>
+          </div>
+          <div>
+            <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Callers
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <Badge v-for="caller in detail.data.allowed_callers" :key="caller">{{ caller }}</Badge>
+            </div>
+          </div>
+        </div>
+        <div v-if="detail.data.permissions.allow.length > 0 || detail.data.permissions.deny.length > 0" class="mb-3">
+          <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Permissions
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <Badge v-for="perm in detail.data.permissions.allow" :key="perm" variant="success">{{ perm }}</Badge>
+            <Badge v-for="perm in detail.data.permissions.deny" :key="perm" variant="danger">{{ perm }}</Badge>
+          </div>
+        </div>
+        <div v-if="detail.data.mcp_servers.length > 0">
+          <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            MCP Servers
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <Badge v-for="srv in detail.data.mcp_servers" :key="srv.name">{{ srv.name }}</Badge>
+          </div>
+        </div>
+        <div class="mt-3">
+          <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Path
+          </div>
+          <span class="font-mono text-xs text-muted-foreground">agents/{{ detail.data.slug }}/agent.md</span>
+        </div>
+      </div>
+
+      <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        System Prompt
       </div>
       <pre
         class="max-h-[500px] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-3 font-mono text-xs text-muted-foreground"

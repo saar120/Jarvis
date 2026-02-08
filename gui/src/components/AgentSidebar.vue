@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AgentsConfig, AgentNavItem } from "@/types/agents";
 import ScrollArea from "./ui/ScrollArea.vue";
-import { Bot, Users, Wrench, Shield } from "lucide-vue-next";
+import { Bot, Users, Wrench, Shield, Cpu } from "lucide-vue-next";
 
 defineProps<{
   config: AgentsConfig | null;
@@ -15,6 +15,7 @@ const emit = defineEmits<{
 function isSelected(item: AgentNavItem, current: AgentNavItem): boolean {
   if (item.kind !== current.kind) return false;
   if (item.kind === "subagent" && current.kind === "subagent") return item.slug === current.slug;
+  if (item.kind === "mcpagent" && current.kind === "mcpagent") return item.slug === current.slug;
   if (item.kind === "skill" && current.kind === "skill") return item.slug === current.slug;
   return true;
 }
@@ -61,6 +62,29 @@ function isSelected(item: AgentNavItem, current: AgentNavItem): boolean {
           @click="emit('select', { kind: 'subagent', slug: agent.slug })"
         >
           <Users :size="14" class="shrink-0" />
+          <span class="truncate">{{ agent.name }}</span>
+        </div>
+      </template>
+
+      <!-- MCP Agents -->
+      <template v-if="config && config.mcpAgents && config.mcpAgents.length > 0">
+        <div
+          class="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+          MCP Agents
+        </div>
+        <div
+          v-for="agent in config.mcpAgents"
+          :key="agent.slug"
+          class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-[13px] transition-colors"
+          :class="
+            isSelected({ kind: 'mcpagent', slug: agent.slug }, selectedItem)
+              ? 'bg-card text-primary'
+              : 'text-muted-foreground hover:bg-card'
+          "
+          @click="emit('select', { kind: 'mcpagent', slug: agent.slug })"
+        >
+          <Cpu :size="14" class="shrink-0" />
           <span class="truncate">{{ agent.name }}</span>
         </div>
       </template>

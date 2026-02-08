@@ -18,7 +18,7 @@ Telegram / CLI → src/core/cli-runner.ts (spawn) → claude -p → response
 ```
 
 - **No API key needed** — uses Claude Code CLI (`claude -p`) with Pro/Max subscription
-- **No MCP server** — native subagents via `.claude/agents/*.md` + built-in Task tool
+- **MCP subagent server** — custom MCP server spawns subagents as separate `claude -p` processes with their own permissions
 - **Project isolation** — `--setting-sources project` blocks `~/.claude/` settings
 - **Memory** — `agents/main/memory.md` injected via `--append-system-prompt` on every call
 
@@ -35,15 +35,24 @@ jarvis/
 │   ├── logging/
 │   │   ├── log-writer.ts     # Persists events to JSONL files
 │   │   └── log-server.ts     # HTTP + WebSocket log viewer
+│   ├── mcp/
+│   │   ├── subagent-server.ts    # MCP server entry point (stdio transport)
+│   │   ├── run-subagent.ts       # Spawns claude -p per subagent
+│   │   ├── parse-agent-config.ts # Parses agents/{name}/agent.md frontmatter
+│   │   ├── agent-registry.ts     # Discovers available subagents
+│   │   └── subagent-sessions.ts  # agentName → sessionId persistence
 │   ├── store/
 │   │   └── session-store.ts  # chatId → sessionId map (data/sessions.json)
 │   └── entrypoints/
 │       ├── telegram.ts       # Telegram relay (Telegraf, auth, chunking, typing)
 │       ├── chat.ts           # CLI REPL for local testing
 │       └── log-viewer.ts     # Standalone log viewer entry point
-├── agents/main/
-│   ├── system-prompt.md      # Jarvis personality & instructions
-│   └── memory.md             # Persistent memory (grows over time)
+├── agents/
+│   ├── main/
+│   │   ├── system-prompt.md      # Jarvis personality & instructions
+│   │   └── memory.md             # Persistent memory (grows over time)
+│   └── echo/
+│       └── agent.md              # Test subagent (YAML frontmatter + system prompt)
 ├── .claude/
 │   ├── settings.json         # Project permissions (committed)
 │   ├── settings.local.json   # Local overrides (not committed)
@@ -52,9 +61,11 @@ jarvis/
 │   └── skills/
 │       └── update-memory/
 │           └── SKILL.md      # Memory write skill (echo >> memory.md)
+├── .mcp.json                 # MCP server registration (jarvis-subagents)
 ├── data/
 │   ├── sessions.json         # Session persistence (gitignored)
-│   └── logs/                 # Daemon logs (future)
+│   ├── subagent-sessions.json # Subagent session persistence (gitignored)
+│   └── logs/                 # JSONL event logs by date
 ├── PLAN.md                   # Full architecture doc
 └── CLAUDE.md                 # This file
 ```
@@ -63,7 +74,7 @@ jarvis/
 
 - **ESM** — `"type": "module"` in package.json, all imports use `.js` extensions
 - **TypeScript** — ES2022 target, NodeNext module resolution, strict mode
-- **Dependencies** — only `telegraf` and `dotenv` at runtime
+- **Dependencies** — `telegraf`, `dotenv`, `ws`, `@modelcontextprotocol/sdk`, `zod`, `yaml`
 - **Output** — `npx tsc` compiles `src/` → `dist/`
 
 ## Key Design Decisions
@@ -72,7 +83,7 @@ jarvis/
 
 Single function: `runMainAgent(message, sessionId?) → Promise<CliResult | CliError>`
 
-- Uses `execFile` (not `exec`) — args as array, prevents shell injection from Telegram messages
+- Uses `spawn` (not `exec`) — args as array, prevents shell injection from Telegram messages
 - Reads `system-prompt.md` and `memory.md` on every call (memory changes between invocations)
 - Passes content via `--system-prompt` and `--append-system-prompt` (inline strings, not file flags)
 - Returns discriminated union with `isCliError()` type guard
@@ -108,11 +119,46 @@ JARVIS_TIMEOUT_MS=        # Claude CLI timeout in ms (default: 120000)
 - **CLI JSON uses `total_cost_usd`** (not `cost_usd`) and `session_id`.
 - **All imports need `.js` extensions** — ESM with NodeNext requires it even for `.ts` source files.
 
-## Subagents & Skills
+## MCP Subagent Server
 
-### Subagents (`.claude/agents/`)
+The main agent delegates tasks via the `run_subagent` MCP tool. Each subagent runs as a **separate `claude -p` process** with its own permissions, MCP servers, and system prompt.
 
-Invoked by the main agent via the built-in `Task` tool. One level of nesting only.
+### How it works
+
+1. Claude Code spawns `src/mcp/subagent-server.ts` via stdio (registered in `.mcp.json`)
+2. Main agent calls `run_subagent(agent_name, prompt, context?)`
+3. MCP server looks up `agents/{name}/agent.md`, spawns `claude -p` with agent-specific config
+4. Subagent events are POSTed to the log server (`POST /api/events`) for real-time dashboard streaming
+5. Result is returned to the main agent
+
+### Agent Config Format (`agents/{name}/agent.md`)
+
+YAML frontmatter for settings, markdown body for system prompt:
+
+```yaml
+---
+name: echo
+description: "Test agent that echoes back input"
+session: false              # false = stateless, true = persistent sessions
+allowed_callers: [main]     # access control
+timeout_ms: 15000           # per-agent timeout
+permissions:
+  allow: []                 # Claude Code tool permissions
+  deny: []
+mcp_servers: []             # MCP servers available to this agent
+---
+System prompt goes here...
+```
+
+### Available Subagents
+
+| Agent | Description |
+|-------|-------------|
+| `echo` | Test agent. Echoes back input with "Echo: " prefix. |
+
+### Native Subagents (`.claude/agents/`)
+
+Invoked via the built-in `Task` tool (narrower permissions only).
 
 | Agent | Description |
 |-------|-------------|
@@ -126,10 +172,8 @@ Invoked by the main agent via the built-in `Task` tool. One level of nesting onl
 
 ## Permissions (`.claude/settings.json`)
 
-**Allowed**: `Bash(cat:*)`, `Bash(echo:*)`, `Bash(ls:*)`, `Read`, `Write`, `Edit`
+**Allowed**: `Bash(cat:*)`, `Bash(echo:*)`, `Bash(ls:*)`, `Read`, `Write`, `Edit`, `mcp__jarvis-subagents__run_subagent`
 **Denied**: `Bash(rm:*)`, `Bash(sudo:*)`, `Bash(curl:*)`, `Bash(wget:*)`
-
-The `Task` tool is built-in and doesn't need explicit permission.
 
 ## Current State
 

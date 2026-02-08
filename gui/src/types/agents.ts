@@ -14,6 +14,19 @@ export interface SubAgentConfig {
   prompt: string;
 }
 
+/** An MCP subagent defined in agents/{name}/agent.md */
+export interface McpAgentConfig {
+  slug: string;
+  name: string;
+  description: string;
+  session: boolean;
+  allowed_callers: string[];
+  timeout_ms: number;
+  permissions: { allow: string[]; deny: string[] };
+  mcp_servers: Array<{ name: string; command: string; args?: string[] }>;
+  prompt: string;
+}
+
 /** A skill defined in .claude/skills/{name}/SKILL.md */
 export interface SkillConfig {
   slug: string;
@@ -36,6 +49,7 @@ export interface ProjectSettings {
 export interface AgentsConfig {
   mainAgent: MainAgentConfig | null;
   subAgents: SubAgentConfig[];
+  mcpAgents: McpAgentConfig[];
   skills: SkillConfig[];
   settings: ProjectSettings | null;
 }
@@ -44,5 +58,6 @@ export interface AgentsConfig {
 export type AgentNavItem =
   | { kind: "main" }
   | { kind: "subagent"; slug: string }
+  | { kind: "mcpagent"; slug: string }
   | { kind: "skill"; slug: string }
   | { kind: "settings" };
