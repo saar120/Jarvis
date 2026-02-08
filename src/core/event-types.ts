@@ -96,7 +96,7 @@ export interface UserEvent extends Enrichment {
     stderr?: string;
     status?: string;
     agentId?: string;
-    content?: Array<{ type: string; text: string }>;
+    content?: Array<TextContent>;
     totalDurationMs?: number;
   };
 }
