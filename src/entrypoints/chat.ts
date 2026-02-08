@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { runMainAgent, isCliError } from "../core/cli-runner.js";
+import { runMainAgent, isRunError } from "../core/cli-runner.js";
 import { getSessionId, setSessionId, resetSession } from "../store/session-store.js";
 import { startLogWriter } from "../logging/log-writer.js";
 import { startLogServer } from "../logging/log-server.js";
@@ -53,7 +53,7 @@ function prompt(): void {
     clearInterval(spinner);
     process.stdout.write("\r\x1b[K"); // clear spinner line
 
-    if (isCliError(result)) {
+    if (isRunError(result)) {
       console.error(`[error] ${result.type}: ${result.message}`);
     } else {
       if (result.sessionId) {

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
-import { runMainAgent, isCliError } from "../core/cli-runner.js";
+import { runMainAgent, isRunError } from "../core/cli-runner.js";
 import { getSessionId, setSessionId, resetSession } from "../store/session-store.js";
 import { startLogWriter } from "../logging/log-writer.js";
 import { startLogServer } from "../logging/log-server.js";
@@ -63,7 +63,7 @@ bot.on(message("text"), async (ctx) => {
 
     clearInterval(typingInterval);
 
-    if (isCliError(result)) {
+    if (isRunError(result)) {
       const userMessage =
         result.type === "timeout"
           ? "Sorry, that took too long. Try a simpler request."

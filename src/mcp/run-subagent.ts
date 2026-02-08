@@ -18,11 +18,6 @@ const parentSessionId = process.env.JARVIS_PARENT_SESSION_ID || "";
 
 export const activeChildren = new Set<ChildProcess>();
 
-// Public API — aliases for backward compatibility
-export type SubagentResult = RunResult;
-export type SubagentError = RunError;
-
-// --- Module-private helpers ---
 
 /** Remap session_id to the parent conversation when available. */
 function toLogEvent(event: Record<string, unknown>): Record<string, unknown> {
@@ -138,7 +133,7 @@ export function runSubagent(
   prompt: string,
   context?: string,
   sessionId?: string,
-): Promise<SubagentResult | SubagentError> {
+): Promise<RunResult | RunError> {
   const args = buildSubagentArgs(config, prompt, context, sessionId);
   const start = Date.now();
   const runId = randomUUID();

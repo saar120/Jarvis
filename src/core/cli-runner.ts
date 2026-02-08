@@ -13,11 +13,7 @@ const timeoutMs = Number(process.env.JARVIS_TIMEOUT_MS) || 120_000;
 const systemPromptPath = join(jarvisHome, "agents", "main", "system-prompt.md");
 const memoryPath = join(jarvisHome, "agents", "main", "memory.md");
 
-// Public API — aliases for backward compatibility
-export type CliResult = RunResult;
-export type CliError = RunError;
-
-export function isCliError(r: CliResult | CliError): r is CliError {
+export function isRunError(r: RunResult | RunError): r is RunError {
   return !r.ok;
 }
 
@@ -28,7 +24,7 @@ interface PromptFiles {
   memory: string;
 }
 
-function readPromptFiles(): PromptFiles | CliError {
+function readPromptFiles(): PromptFiles | RunError {
   let systemPrompt: string;
   try {
     systemPrompt = readFileSync(systemPromptPath, "utf-8");
@@ -118,10 +114,10 @@ function enrichEvent(
 export function runMainAgent(
   message: string,
   sessionId?: string,
-): Promise<CliResult | CliError> {
+): Promise<RunResult | RunError> {
   // Phase 1: Prepare (sync, before spawn)
   const files = readPromptFiles();
-  if ("ok" in files) return Promise.resolve(files); // CliError
+  if ("ok" in files) return Promise.resolve(files); // RunError
 
   const { systemPrompt, memory } = files;
   const args = buildCliArgs(systemPrompt, memory, message, sessionId);
