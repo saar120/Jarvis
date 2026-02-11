@@ -97,7 +97,7 @@ Single function: `runMainAgent(message, sessionId?) → Promise<RunResult | RunE
 
 ### Telegram Relay (`src/entrypoints/telegram.ts`)
 
-- Auth via `TELEGRAM_ALLOWED_USERS` (comma-separated IDs, silent ignore if unauthorized)
+- Auth via `TELEGRAM_ALLOWED_USERS` (comma-separated IDs, **required** — rejects all messages if unset)
 - Typing indicator refreshed every 4s
 - Response chunking at 4096 chars (paragraph → line → space → hard-cut boundaries)
 - Commands: `/start`, `/reset`, `/id`
@@ -107,7 +107,7 @@ Single function: `runMainAgent(message, sessionId?) → Promise<RunResult | RunE
 
 ```bash
 TELEGRAM_BOT_TOKEN=       # From @BotFather
-TELEGRAM_ALLOWED_USERS=   # Comma-separated Telegram user IDs (empty = allow all)
+TELEGRAM_ALLOWED_USERS=   # Comma-separated Telegram user IDs (REQUIRED — empty = deny all)
 JARVIS_HOME=              # Project root (defaults to cwd)
 JARVIS_TIMEOUT_MS=        # Claude CLI timeout in ms (default: 120000)
 ```

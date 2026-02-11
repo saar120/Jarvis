@@ -12,15 +12,18 @@ if (!token) {
   process.exit(1);
 }
 
-const allowedUsers: Set<number> | null = process.env.TELEGRAM_ALLOWED_USERS
+const allowedUsers: Set<number> = process.env.TELEGRAM_ALLOWED_USERS
   ? new Set(process.env.TELEGRAM_ALLOWED_USERS.split(",").map((s) => Number(s.trim())))
-  : null;
+  : new Set();
 
 const bot = new Telegraf(token);
 
 // --- Auth middleware ---
 bot.use((ctx, next) => {
-  if (!allowedUsers) return next();
+  if (allowedUsers.size === 0) {
+    console.warn("TELEGRAM_ALLOWED_USERS is not set — rejecting all messages");
+    return;
+  }
   const userId = ctx.from?.id;
   if (userId && allowedUsers.has(userId)) return next();
   // Silently ignore unauthorized users

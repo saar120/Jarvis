@@ -288,7 +288,7 @@ export function startLogServer(): Server {
     ws.send(JSON.stringify({ type: "connected", message: "Jarvis log stream connected" }));
   });
 
-  server.listen(PORT, () => {
+  server.listen(PORT, "127.0.0.1", () => {
     console.log(`Jarvis dashboard: http://localhost:${PORT}`);
   });
 
