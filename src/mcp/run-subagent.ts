@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { request } from "node:http";
@@ -76,20 +76,37 @@ function buildSubagentArgs(
   sessionId?: string,
 ): string[] {
   // Read agent-specific memory if it exists
-  const memoryPath = join(jarvisHome, "agents", config.name, "memory.md");
+  const agentDir = join(jarvisHome, "agents", config.name);
   let memory = "";
   try {
+    const memoryPath = join(agentDir, "memory.md");
     if (existsSync(memoryPath)) {
       memory = readFileSync(memoryPath, "utf-8");
     }
   } catch { /* no memory file */ }
+
+  let skills = "";
+  try {
+    const skillsDir = join(agentDir, "skills");
+    if (existsSync(skillsDir)) {
+      const files = readdirSync(skillsDir).filter((f) => f.endsWith(".md")).sort();
+      for (const file of files) {
+        skills += readFileSync(join(skillsDir, file), "utf-8") + "\n";
+      }
+    }
+  } catch { /* no skills directory */ }
+
+  const systemPrompt = skills
+    ? config.systemPrompt + "\n\n" + skills.trim()
+    : config.systemPrompt;
 
   const args = [
     "-p",
     "--verbose",
     "--output-format", "stream-json",
     "--setting-sources", "project",
-    "--system-prompt", config.systemPrompt,
+    "--add-dir", agentDir,
+    "--system-prompt", systemPrompt,
   ];
 
   if (memory) {
@@ -97,15 +114,25 @@ function buildSubagentArgs(
   }
 
   // Agent-specific permissions — agent config is source of truth.
-  // Empty allow = no tools (agents are isolated by default).
-  // --tools is an explicit whitelist: unlisted tools are implicitly denied.
+  // --tools controls which built-in tools are available (e.g. "Bash", "Edit", "Read").
+  // --allowed-tools controls permission patterns (e.g. "Bash(scripts/gog-gmail-read.sh:*)").
+  // We extract base tool names for --tools and pass the full patterns to --allowed-tools.
   if (config.permissions.allow.length > 0) {
-    args.push("--tools", config.permissions.allow.join(","));
+    // Extract unique base tool names: "Bash(foo:*)" → "Bash", "Read" → "Read"
+    const baseTools = [...new Set(
+      config.permissions.allow.map((t) => t.replace(/\(.*$/, "")),
+    )];
+    args.push("--tools", baseTools.join(","));
+    args.push("--allowed-tools", ...config.permissions.allow);
   } else {
     args.push("--tools", "");
   }
 
-  // MCP servers for this agent
+  // MCP servers for this agent.
+  // --strict-mcp-config ignores ALL other MCP configs (project .mcp.json, user, etc.)
+  // Without this, subagents inherit the jarvis-subagents MCP server
+  // and can recursively call run_subagent, spawning infinite processes.
+  args.push("--strict-mcp-config");
   const mcpConfigPath = buildMcpConfigPath(config);
   if (mcpConfigPath) {
     args.push("--mcp-config", mcpConfigPath);

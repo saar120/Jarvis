@@ -51,8 +51,12 @@ jarvis/
 │   ├── main/
 │   │   ├── system-prompt.md      # Jarvis personality & instructions
 │   │   └── memory.md             # Persistent memory (grows over time)
-│   └── echo/
-│       └── agent.md              # Test subagent (YAML frontmatter + system prompt)
+│   ├── echo/
+│   │   └── agent.md              # Test subagent (YAML frontmatter + system prompt)
+│   └── gmail-reader/
+│       ├── agent.md              # Read-only Gmail agent (gog CLI wrapper)
+│       └── scripts/
+│           └── gog-gmail-read.sh # Read-only gog CLI wrapper (agent-scoped)
 ├── .claude/
 │   ├── settings.json         # Project permissions (committed)
 │   ├── settings.local.json   # Local overrides (not committed)
@@ -155,6 +159,7 @@ System prompt goes here...
 | Agent | Description |
 |-------|-------------|
 | `echo` | Test agent. Echoes back input with "Echo: " prefix. |
+| `gmail-reader` | Read-only Gmail agent. Searches/summarizes emails via gog CLI wrapper. |
 
 ### Native Subagents (`.claude/agents/`)
 
