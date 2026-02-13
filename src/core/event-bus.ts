@@ -1,16 +1,16 @@
 import { EventEmitter } from "node:events";
-import type { StreamEvent } from "./event-types.js";
+import type { JarvisEvent } from "./agent.js";
 
 class JarvisEventBus extends EventEmitter {
-  emitEvent(event: StreamEvent): void {
+  emitEvent(event: JarvisEvent): void {
     this.emit("event", event);
   }
 
-  onEvent(listener: (event: StreamEvent) => void): void {
+  onEvent(listener: (event: JarvisEvent) => void): void {
     this.on("event", listener);
   }
 
-  offEvent(listener: (event: StreamEvent) => void): void {
+  offEvent(listener: (event: JarvisEvent) => void): void {
     this.off("event", listener);
   }
 }

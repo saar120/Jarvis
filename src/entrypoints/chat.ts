@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { runMainAgent, isRunError } from "../core/cli-runner.js";
+import { runMainAgent, isRunError } from "../core/agent.js";
 import { getSessionId, setSessionId, resetSession } from "../store/session-store.js";
 import { startLogWriter } from "../logging/log-writer.js";
 import { startLogServer } from "../logging/log-server.js";
