@@ -109,6 +109,10 @@ function buildSubagentArgs(
     "--system-prompt", systemPrompt,
   ];
 
+  if (config.model) {
+    args.push("--model", config.model);
+  }
+
   if (memory) {
     args.push("--append-system-prompt", memory);
   }

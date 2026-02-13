@@ -11,6 +11,7 @@ export interface McpServerConfig {
 export interface AgentConfig {
   name: string;
   description: string;
+  model?: string;
   session: boolean;
   allowed_callers: string[];
   timeout_ms: number;
@@ -63,6 +64,7 @@ export function parseAgentConfig(filePath: string): AgentConfig {
   return {
     name: frontmatter.name,
     description: frontmatter.description,
+    model: (frontmatter.model as string) ?? undefined,
     session: (frontmatter.session as boolean) ?? false,
     allowed_callers:
       (frontmatter.allowed_callers as string[]) ?? ["main"],

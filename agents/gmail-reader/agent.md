@@ -1,6 +1,7 @@
 ---
 name: gmail-reader
 description: "Read-only Gmail agent — searches and summarizes emails via gog CLI"
+model: haiku
 session: false
 allowed_callers: [main]
 timeout_ms: 180000
