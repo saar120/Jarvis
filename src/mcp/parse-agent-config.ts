@@ -17,6 +17,7 @@ export interface AgentConfig {
   timeout_ms: number;
   permissions: { allow: string[]; deny: string[] };
   mcp_servers: McpServerConfig[];
+  skills: string[];
   systemPrompt: string;
 }
 
@@ -74,6 +75,7 @@ export function parseAgentConfig(filePath: string): AgentConfig {
       deny: perms?.deny ?? [],
     },
     mcp_servers: mcpServers,
+    skills: (frontmatter.skills as string[]) ?? [],
     systemPrompt,
   };
 }

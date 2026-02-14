@@ -1,6 +1,6 @@
 import { query, createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage, SDKResultMessage, McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -79,20 +79,8 @@ async function runSubagent(
     if (existsSync(mp)) memory = readFileSync(mp, "utf-8");
   } catch { /* no memory file */ }
 
-  // Read agent-specific skills
-  let skills = "";
-  try {
-    const skillsDir = join(agentDir, "skills");
-    if (existsSync(skillsDir)) {
-      for (const file of readdirSync(skillsDir).filter(f => f.endsWith(".md")).sort()) {
-        skills += readFileSync(join(skillsDir, file), "utf-8") + "\n";
-      }
-    }
-  } catch { /* no skills directory */ }
-
   const fullSystemPrompt = [
     config.systemPrompt,
-    skills.trim(),
     memory,
   ].filter(Boolean).join("\n\n");
 
@@ -115,6 +103,11 @@ async function runSubagent(
     ? [...new Set(config.permissions.allow.map(t => t.replace(/\(.*$/, "")))]
     : [];
 
+  // Add Skill tool when the agent has skills configured
+  if (config.skills.length > 0 && !baseTools.includes("Skill")) {
+    baseTools.push("Skill");
+  }
+
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), config.timeout_ms);
 
@@ -126,11 +119,13 @@ async function runSubagent(
     let errorMessage = "";
 
     // Each subagent runs as its own query() — fully independent permissions
+    // settingSources: ["project"] loads .claude/skills/ so the SDK Skill tool works natively.
+    // Permission isolation is enforced by tools/allowedTools/disallowedTools + bypassPermissions.
     const conversation = query({
       prompt: fullPrompt,
       options: {
         systemPrompt: fullSystemPrompt,
-        settingSources: [],
+        settingSources: ["project"],
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         tools: baseTools.length > 0 ? baseTools : [],

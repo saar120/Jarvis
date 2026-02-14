@@ -19,7 +19,7 @@ Telegram / CLI → src/core/agent.ts → SDK query() → Claude Agent SDK → re
 
 - **Agent SDK** — uses `@anthropic-ai/claude-agent-sdk` `query()` function (wraps Claude Code CLI internally)
 - **Inline MCP server** — subagent delegation runs in-process via `createSdkMcpServer()` (no separate stdio process)
-- **Project isolation** — `settingSources: ["project"]` for main agent, `settingSources: []` for subagents
+- **Project isolation** — `settingSources: ["project"]` for all agents; permission isolation via `tools`/`allowedTools`/`disallowedTools`
 - **Memory** — `agents/main/memory.md` concatenated to system prompt on every call
 
 ## Project Structure
@@ -58,8 +58,10 @@ jarvis/
 │   ├── agents/
 │   │   └── ping-pong.md      # Test subagent
 │   └── skills/
-│       └── update-memory/
-│           └── SKILL.md      # Memory write skill (echo >> memory.md)
+│       ├── update-memory/
+│       │   └── SKILL.md      # Memory write skill (echo >> memory.md)
+│       └── gmail-script-reference/
+│           └── SKILL.md      # Gmail CLI reference (gog-gmail-read.sh syntax)
 ├── data/
 │   ├── sessions.json         # Session persistence (gitignored)
 │   ├── subagent-sessions.json # Subagent session persistence (gitignored)
@@ -123,7 +125,7 @@ JARVIS_TIMEOUT_MS=        # Claude CLI timeout in ms (default: 120000)
 
 - **All imports need `.js` extensions** — ESM with NodeNext requires it even for `.ts` source files.
 - **`bypassPermissions` requires `allowDangerouslySkipPermissions: true`** — SDK safety check.
-- **Subagents use `settingSources: []`** — prevents inheriting project permissions. Tools restricted via `tools` + `allowedTools` options.
+- **Subagents use `settingSources: ["project"]`** — loads `.claude/skills/` for native Skill tool access. Permission isolation enforced by `tools` + `allowedTools` + `disallowedTools` + `bypassPermissions`.
 - **Subagents use `strictMcpConfig: true`** — prevents recursive subagent spawning (matches old `--strict-mcp-config` behavior).
 
 ## Subagent Delegation
@@ -153,6 +155,7 @@ permissions:
   allow: []                 # Claude Code tool permissions
   deny: []
 mcp_servers: []             # MCP servers available to this agent
+skills: []                  # .claude/skills/ to load via SDK Skill tool
 ---
 System prompt goes here...
 ```
@@ -176,6 +179,7 @@ Invoked via the built-in `Task` tool (narrower permissions only).
 | Skill | Description |
 |-------|-------------|
 | `update-memory` | Appends facts to `agents/main/memory.md` via Bash echo |
+| `gmail-script-reference` | Gmail CLI reference — command syntax, query operators for gog-gmail-read.sh |
 
 ## Permissions
 
