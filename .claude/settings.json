@@ -2,8 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(cat:*)", "Bash(echo:*)", "Bash(ls:*)",
-      "Read", "Write", "Edit",
-      "mcp__jarvis-subagents__run_subagent"
+      "Read", "Write", "Edit", "Task"
     ],
     "deny": [
       "Bash(rm:*)", "Bash(sudo:*)", "Bash(curl:*)", "Bash(wget:*)"

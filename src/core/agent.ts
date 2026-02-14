@@ -1,15 +1,10 @@
-import { query, createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKMessage, SDKResultMessage, McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentDefinition, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import { eventBus } from "./event-bus.js";
 import { discoverAgents } from "../mcp/agent-registry.js";
-import {
-  getSubagentSessionId,
-  setSubagentSessionId,
-} from "../mcp/subagent-sessions.js";
 
 // --- Config ---
 
@@ -59,202 +54,64 @@ function enrichMessage(msg: SDKMessage, runId: string, agentName: string): Jarvi
   } as JarvisEvent;
 }
 
-// --- Subagent MCP server (inline, runs in-process) ---
+// --- Build SDK agent definitions from agents/{name}/agent.md ---
 
-function buildSubagentMcpServer(): McpSdkServerConfigWithInstance {
-  const agents = discoverAgents();
-  const agentNames = [...agents.keys()];
+function buildAgentDefinitions(): Record<string, AgentDefinition> {
+  const configs = discoverAgents();
+  const agents: Record<string, AgentDefinition> = {};
 
-  return createSdkMcpServer({
-    name: "jarvis-subagents",
-    tools: [
-      tool(
-        "run_subagent",
-        `Delegate a task to a specialized subagent. Available agents: ${agentNames.join(", ") || "none"}`,
-        {
-          agent_name: z.string().describe(
-            `Name of the subagent. Available: ${agentNames.join(", ") || "none"}`,
-          ),
-          prompt: z.string().describe("The task or question for the subagent"),
-          context: z.string().optional().describe(
-            "Optional brief context relevant to the task. Only include specific facts the subagent needs.",
-          ),
-        },
-        async ({ agent_name, prompt, context }) => {
-          const config = agents.get(agent_name);
-          if (!config) {
-            return {
-              isError: true,
-              content: [{ type: "text" as const, text: `Unknown agent: "${agent_name}". Available: ${agentNames.join(", ") || "none"}` }],
-            };
-          }
+  for (const [name, config] of configs) {
+    const agentDir = join(jarvisHome, "agents", name);
 
-          if (!config.allowed_callers.includes("main")) {
-            return {
-              isError: true,
-              content: [{ type: "text" as const, text: `Agent "${agent_name}" does not allow caller "main".` }],
-            };
-          }
+    // Read agent-specific memory
+    let memory = "";
+    try {
+      const mp = join(agentDir, "memory.md");
+      if (existsSync(mp)) memory = readFileSync(mp, "utf-8");
+    } catch { /* no memory file */ }
 
-          const sessionId = config.session
-            ? getSubagentSessionId(agent_name)
-            : undefined;
-
-          const result = await runSubagent(config, prompt, context, sessionId);
-
-          if (result.ok && config.session && result.sessionId) {
-            setSubagentSessionId(agent_name, result.sessionId);
-          }
-
-          if (!result.ok) {
-            return {
-              isError: true,
-              content: [{ type: "text" as const, text: `Subagent "${agent_name}" failed (${result.type}): ${result.message}` }],
-            };
-          }
-
-          return {
-            content: [{
-              type: "text" as const,
-              text: JSON.stringify({
-                agent: agent_name,
-                result: result.result,
-                duration_ms: result.durationMs,
-                cost_usd: result.costUsd,
-              }),
-            }],
-          };
-        },
-      ),
-    ],
-  });
-}
-
-// --- Run a subagent via SDK query() ---
-
-async function runSubagent(
-  config: import("../mcp/parse-agent-config.js").AgentConfig,
-  prompt: string,
-  context?: string,
-  sessionId?: string,
-): Promise<RunResult | RunError> {
-  const agentDir = join(jarvisHome, "agents", config.name);
-  const runId = randomUUID();
-  const start = Date.now();
-
-  // Read agent-specific memory
-  let memory = "";
-  try {
-    const mp = join(agentDir, "memory.md");
-    if (existsSync(mp)) memory = readFileSync(mp, "utf-8");
-  } catch { /* no memory file */ }
-
-  // Read agent-specific skills
-  let skills = "";
-  try {
-    const skillsDir = join(agentDir, "skills");
-    if (existsSync(skillsDir)) {
-      for (const file of readdirSync(skillsDir).filter(f => f.endsWith(".md")).sort()) {
-        skills += readFileSync(join(skillsDir, file), "utf-8") + "\n";
-      }
-    }
-  } catch { /* no skills directory */ }
-
-  const fullSystemPrompt = [
-    config.systemPrompt,
-    skills.trim(),
-    memory,
-  ].filter(Boolean).join("\n\n");
-
-  const fullPrompt = context
-    ? `Context:\n${context}\n\nTask:\n${prompt}`
-    : prompt;
-
-  // Build agent-specific MCP servers
-  const mcpServers: Record<string, { command: string; args?: string[]; env?: Record<string, string> }> = {};
-  for (const s of config.mcp_servers) {
-    mcpServers[s.name] = {
-      command: s.command,
-      args: s.args ?? [],
-      env: s.env ?? {},
-    };
-  }
-
-  // Extract base tool names for the tools option
-  const baseTools = config.permissions.allow.length > 0
-    ? [...new Set(config.permissions.allow.map(t => t.replace(/\(.*$/, "")))]
-    : [];
-
-  const abortController = new AbortController();
-  const timer = setTimeout(() => abortController.abort(), config.timeout_ms);
-
-  try {
-    let result = "";
-    let resultSessionId = "";
-    let costUsd = 0;
-    let isError = false;
-    let errorMessage = "";
-
-    const conversation = query({
-      prompt: fullPrompt,
-      options: {
-        systemPrompt: fullSystemPrompt,
-        settingSources: [],
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        tools: baseTools.length > 0 ? baseTools : [],
-        allowedTools: config.permissions.allow,
-        disallowedTools: config.permissions.deny,
-        cwd: jarvisHome,
-        additionalDirectories: [agentDir],
-        mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-        strictMcpConfig: true,
-        model: config.model,
-        resume: sessionId,
-        abortController,
-      },
-    });
-
-    for await (const msg of conversation) {
-      eventBus.emitEvent(enrichMessage(msg, runId, config.name));
-
-      if (msg.type === "result") {
-        const r = msg as SDKResultMessage;
-        resultSessionId = r.session_id;
-        costUsd = r.total_cost_usd;
-        isError = r.is_error;
-        if (r.subtype === "success") {
-          result = r.result;
-        } else {
-          errorMessage = ("errors" in r ? r.errors.join("; ") : "") || "Subagent returned an error.";
+    // Read agent-specific skills
+    let skills = "";
+    try {
+      const skillsDir = join(agentDir, "skills");
+      if (existsSync(skillsDir)) {
+        for (const file of readdirSync(skillsDir).filter(f => f.endsWith(".md")).sort()) {
+          skills += readFileSync(join(skillsDir, file), "utf-8") + "\n";
         }
       }
-    }
+    } catch { /* no skills directory */ }
 
-    clearTimeout(timer);
+    const prompt = [
+      config.systemPrompt,
+      skills.trim(),
+      memory,
+    ].filter(Boolean).join("\n\n");
 
-    if (isError) {
-      return { ok: false, type: "cli_error", message: errorMessage || result || "Subagent error." };
-    }
+    // Extract base tool names: "Bash(foo:*)" → "Bash"
+    const tools = config.permissions.allow.length > 0
+      ? [...new Set(config.permissions.allow.map(t => t.replace(/\(.*$/, "")))]
+      : [];
 
-    return {
-      ok: true,
-      result,
-      sessionId: resultSessionId,
-      durationMs: Date.now() - start,
-      costUsd,
+    // Build MCP server specs for this agent
+    const mcpServers = config.mcp_servers.map(s => ({
+      [s.name]: {
+        command: s.command,
+        args: s.args ?? [],
+        env: s.env ?? {},
+      },
+    }));
+
+    agents[name] = {
+      description: config.description,
+      prompt,
+      tools: tools.length > 0 ? tools : [],
+      disallowedTools: config.permissions.deny,
+      model: (config.model as AgentDefinition["model"]) ?? undefined,
+      mcpServers: mcpServers.length > 0 ? mcpServers : undefined,
     };
-  } catch (err) {
-    clearTimeout(timer);
-    if (abortController.signal.aborted) {
-      return {
-        ok: false,
-        type: "timeout",
-        message: `Subagent "${config.name}" timed out after ${config.timeout_ms}ms.`,
-      };
-    }
-    return { ok: false, type: "cli_error", message: String(err) };
   }
+
+  return agents;
 }
 
 // --- Main agent ---
@@ -286,7 +143,7 @@ export async function runMainAgent(
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
   try {
-    const subagentMcp = buildSubagentMcpServer();
+    const agents = buildAgentDefinitions();
 
     let result = "";
     let resultSessionId = "";
@@ -305,9 +162,7 @@ export async function runMainAgent(
         cwd: jarvisHome,
         resume: sessionId,
         abortController,
-        mcpServers: {
-          "jarvis-subagents": subagentMcp,
-        },
+        agents,
       },
     });
 
