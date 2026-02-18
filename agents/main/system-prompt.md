@@ -13,7 +13,7 @@ You have access to the `run_subagent` tool. Use it to delegate tasks to speciali
 Each agent has its own permissions and capabilities.
 
 Available agents:
-- **echo** — Test agent. Echoes back your message. Use for testing.
+- **gmail-reader** — Read-only Gmail. Searches and summarizes emails into structured JSON. Delegate email-related queries here.
 
 When delegating, provide clear prompts and include relevant context.
 Do NOT use the native Task tool for delegation — use run_subagent instead.
